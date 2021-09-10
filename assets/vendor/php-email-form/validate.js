@@ -18,7 +18,7 @@
       let recaptcha = thisForm.getAttribute('data-recaptcha-site-key');
       
       if( ! action ) {
-        displayError(thisForm, 'The form action property is not set!')
+        displayError(thisForm, 'Please send a direct email to Gianluca.posca11@gmail.com')
         return;
       }
       thisForm.querySelector('.loading').classList.add('d-block');
@@ -41,7 +41,7 @@
             }
           });
         } else {
-          displayError(thisForm, 'The reCaptcha javascript API url is not loaded!')
+          displayError(thisForm, 'Please send a direct email to Gianluca.posca11@gmail.com')
         }
       } else {
         php_email_form_submit(thisForm, action, formData);
@@ -59,7 +59,7 @@
       if( response.ok ) {
         return response.text()
       } else {
-        throw new Error(`${response.status} ${response.statusText} ${response.url}`); 
+        throw new Error('Please send a direct email to Gianluca.posca11@gmail.com');
       }
     })
     .then(data => {
@@ -68,11 +68,11 @@
         thisForm.querySelector('.sent-message').classList.add('d-block');
         thisForm.reset(); 
       } else {
-        throw new Error(data ? data : 'Form submission failed and no error message returned from: ' + action); 
+        throw new Error(data ? data : 'Please send a direct email to Gianluca.posca11@gmail.com');
       }
     })
     .catch((error) => {
-      displayError(thisForm, error);
+      displayError('Please send a direct email to Gianluca.posca11@gmail.com');
     });
   }
 
