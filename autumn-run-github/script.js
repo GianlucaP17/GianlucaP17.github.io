@@ -1,4 +1,4 @@
-const REVOLUT_URL = 'https://revolut.me/GabrielePosca';
+const REVOLUT_URL = 'https://revolut.me/gabrieleposca';
 
 const form = document.getElementById('signupForm');
 const roomType = document.getElementById('roomType');
