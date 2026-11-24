@@ -58,7 +58,7 @@ textarea:focus{outline:none;border-color:var(--ink)}
   <div class="row"><button class="b pri" id="manda" type="button">Manda al QG</button><button class="b" id="annulla" type="button">Annulla</button></div>
   <p class="mut">Tocca il cerchio: quando pulsa e dice «Ti ascolto», parla. Il testo compare qui mentre parli. «Manda al QG» lo porta nel riquadro del QG.</p>
   <p id="diag" aria-hidden="true"></p>
-  <p class="ver">Parla · versione 5</p>
+  <p class="ver">Parla · versione 6</p>
 </main>
 <script>
 (function () {
@@ -86,7 +86,7 @@ textarea:focus{outline:none;border-color:var(--ink)}
   // ---------- ascolto (riconoscimento vocale del telefono)
   var R = window.SpeechRecognition || window.webkitSpeechRecognition;
   var IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  var rec = null, vuole = false, sessioni = 0, risultati = 0, dopoFine = null;
+  var rec = null, vuole = false, sessioni = 0, risultati = 0, dopoFine = null, partenzaAuto = false;
   var EV = [];   // registro tecnico: solo nomi di eventi, mai le parole
   function nota(x) { EV.push(x); if (EV.length > 60) EV.shift(); g('diag').textContent = EV.slice(-8).join(' · '); }
   function stato(x) { st.textContent = x; }
@@ -95,7 +95,7 @@ textarea:focus{outline:none;border-color:var(--ink)}
   function nuovaSessione() {
     var r = new R(); r.lang = 'it-IT'; r.interimResults = true; r.maxAlternatives = 1;
     r.continuous = true;   // ascolto continuo: non si ferma alle pause (a frasi sull'iPhone la ripartenza non sentiva più la voce)
-    r.onstart = function () { sessioni++; nota('inizio'); micOn(true); stato('Ti ascolto… parla ora'); msg.textContent = ''; };
+    r.onstart = function () { sessioni++; nota('inizio'); partenzaAuto = false; micOn(true); stato('Ti ascolto… parla ora'); msg.textContent = ''; };
     r.onaudiostart = function () { nota('audio'); };
     r.onsoundstart = function () { nota('suono'); };
     r.onspeechstart = function () { nota('voce'); };
@@ -109,6 +109,7 @@ textarea:focus{outline:none;border-color:var(--ink)}
       var c = e && e.error; nota('errore ' + c);
       if (c === 'no-speech' || c === 'aborted') return;
       vuole = false;
+      if (partenzaAuto) { partenzaAuto = false; nota('da solo no'); return; }   // il telefono vuole un tocco: niente allarmi
       msg.textContent = c === 'not-allowed' || c === 'service-not-allowed'
         ? 'Il telefono non lascia ascoltare: Impostazioni › App › Safari › Microfono › Consenti, e controlla che «Dettatura» sia attiva (Impostazioni › Generali › Tastiera). Poi tocca di nuovo il cerchio.'
         : c === 'network' ? 'Per capire la voce serve internet: controlla la connessione.'
@@ -140,8 +141,17 @@ textarea:focus{outline:none;border-color:var(--ink)}
     try { rec.stop(); } catch (x) { if (dopoFine) { var f = dopoFine; dopoFine = null; f(); } }
     setTimeout(function () { if (dopoFine) { var f = dopoFine; dopoFine = null; micOn(false); f(); } }, 2500);
   }
+  function partiDaSolo() {   // se il microfono è già permesso (Safari › Impostazioni sito web › Microfono › Consenti), ascolto subito
+    if (!R || !navigator.permissions || !navigator.permissions.query) return;
+    navigator.permissions.query({ name: 'microphone' }).then(function (p) {
+      nota('permesso ' + p.state);
+      if (p.state !== 'granted' || vuole) return;
+      vuole = true; partenzaAuto = true; stato('Apro il microfono…');
+      try { rec = nuovaSessione(); rec.start(); } catch (x) { vuole = false; partenzaAuto = false; micOn(false); stato('Tocca il cerchio e parla'); }
+    }).catch(function () { nota('permesso ?'); });
+  }
   if (!R) { mic.disabled = true; stato('Qui il riconoscimento vocale non c\u2019è'); msg.textContent = 'Apri questa pagina con Safari sull\u2019iPhone. Intanto puoi scrivere qui sotto e mandarlo al QG.'; nota('niente riconoscimento'); }
-  else stato('Tocca il cerchio e parla');
+  else { stato('Tocca il cerchio e parla'); partiDaSolo(); }
   mic.addEventListener('click', function () {
     if (!R) return;
     if (vuole) { ferma(); return; }
@@ -178,7 +188,7 @@ textarea:focus{outline:none;border-color:var(--ink)}
   function mandaNota(perche) {   // nota tecnica per Claude: nessuna parola, solo come è andato l'ascolto
     if (notaMandata) return; notaMandata = true;
     var ua = navigator.userAgent.replace(/[^A-Za-z0-9 ._\/()-]/g, '').slice(0, 140);
-    imbuca('diag.' + perche + ' | v5 | ios ' + IOS + ' | api ' + (!!R) + ' | sessioni ' + sessioni + ' | risultati ' + risultati + ' | ' + EV.join(',') + ' | ' + ua);
+    imbuca('diag.' + perche + ' | v6 | ios ' + IOS + ' | api ' + (!!R) + ' | sessioni ' + sessioni + ' | risultati ' + risultati + ' | ' + EV.join(',') + ' | ' + ua);
   }
   g('manda').addEventListener('click', function () {
     if (inviato) return;
