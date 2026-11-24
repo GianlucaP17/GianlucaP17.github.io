@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#F4F1EA">
+<title>Invia email</title>
+<!--
+  «Invia» – paginetta del QG di Giangi per mandare un'email preparata nel QG.
+  Il QG non può aprire Mail o Gmail da dentro Claude: apre questa pagina, che riceve oggetto e testo dopo il #
+  (la parte dopo il # resta sul telefono, non arriva a nessun server) e li passa a Mail, a Gmail o al menu Condividi.
+  Qui non si salva niente.
+-->
+<style>
+:root{color-scheme:light;--ink:#1F2433;--mut:#6B7180;--bg:#F4F1EA;--line:#E2DCCF}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;padding:calc(16px + env(safe-area-inset-top,0px)) 16px calc(60px + env(safe-area-inset-bottom,0px))}
+main{max-width:600px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.top{display:flex;align-items:center;gap:10px}
+.logo{width:38px;height:38px;border-radius:11px;background:var(--ink);color:#fff;display:grid;place-items:center;font-weight:800;font-size:15px}
+h1{font-size:25px;margin:0}
+p{margin:0}
+.mut{color:var(--mut);font-size:15px}
+.box{background:#fff;border:2px solid var(--line);border-radius:16px;padding:12px 14px}
+.lbl{font-size:13px;font-weight:700;color:var(--mut);margin-bottom:4px}
+#ogg{font-weight:700}
+#testo{white-space:pre-wrap;max-height:40vh;overflow:auto}
+.b{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:56px;border-radius:16px;border:2px solid var(--line);background:#fff;font:inherit;font-weight:700;cursor:pointer;color:inherit;text-decoration:none}
+.b.pri{background:var(--ink);color:#fff;border-color:var(--ink)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+#msg{background:#FFF3C4;border-radius:14px;padding:10px 12px;font-size:15px}
+#msg:empty{display:none}
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><span class="logo" aria-hidden="true">QG</span><h1>Invia l'email</h1></div>
+  <div class="box" id="ccA" hidden><div class="lbl">A</div><div id="dest"></div></div>
+  <div class="box"><div class="lbl">Oggetto</div><div id="ogg"></div></div>
+  <div class="box"><div class="lbl">Testo</div><div id="testo"></div></div>
+  <button class="b pri" id="condividi" type="button" hidden>Condividi… (Mail, Gmail, WhatsApp…)</button>
+  <div class="row"><button class="b" id="mail" type="button">Apri in Mail</button><button class="b" id="gmail" type="button">Apri in Gmail</button></div>
+  <button class="b" id="copia" type="button">Copia il testo</button>
+  <p id="msg" role="status"></p>
+  <p class="mut">In Mail o in Gmail scegli l'account da cui mandarla e controlla il destinatario prima di inviare.</p>
+</main>
+<script>
+(function () {
+  'use strict';
+  var q = {};
+  location.hash.slice(1).split('&').forEach(function (p) { var i = p.indexOf('='); if (i > 0) { try { q[p.slice(0, i)] = decodeURIComponent(p.slice(i + 1)); } catch (e) { } } });
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { }   // il testo non resta nella barra
+  var A = String(q.a || '').slice(0, 300), S = String(q.s || '').slice(0, 300), B = String(q.b || '').slice(0, 12000);
+  var email = (A.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/) || [''])[0];
+  var g = function (id) { return document.getElementById(id); }, msg = g('msg');
+  if (A) { g('ccA').hidden = false; g('dest').textContent = A + (A && !email ? '  (l’indirizzo lo scegli in Mail o Gmail)' : ''); }
+  g('ogg').textContent = S || '—'; g('testo').textContent = B || '—';
+  if (!B) { msg.textContent = 'Non c’è nessuna email: preparala nel QG (Personale › Prepara un’email) e tocca «Invia…».'; }
+  var e = encodeURIComponent;
+  if (navigator.share && B) {
+    g('condividi').hidden = false;
+    g('condividi').addEventListener('click', function () {
+      navigator.share({ title: S, text: (S ? S + '\n\n' : '') + B }).catch(function () { });
+    });
+  }
+  g('mail').addEventListener('click', function () {
+    if (!B) return;
+    location.href = 'mailto:' + e(email) + '?subject=' + e(S) + '&body=' + e(B);
+  });
+  g('gmail').addEventListener('click', function () {
+    if (!B) return;
+    var web = 'https://mail.google.com/mail/?view=cm&fs=1&to=' + e(email) + '&su=' + e(S) + '&body=' + e(B);
+    var app = 'googlegmail:///co?to=' + e(email) + '&subject=' + e(S) + '&body=' + e(B);
+    var via = false; var fuori = function () { via = true; };
+    document.addEventListener('visibilitychange', fuori, { once: true });
+    location.href = app;   // l'app Gmail, se c'è
+    setTimeout(function () { if (!via && document.visibilityState === 'visible') location.href = web; }, 1400);   // altrimenti Gmail sul web
+  });
+  g('copia').addEventListener('click', function () {
+    var t = (S ? 'Oggetto: ' + S + '\n\n' : '') + B;
+    navigator.clipboard.writeText(t).then(function () { msg.textContent = 'Copiato.'; }, function () { msg.textContent = 'Non riesco a copiare: tieni premuto sul testo e scegli Copia.'; });
+  });
+})();
+</script>
+</body>
+</html>
