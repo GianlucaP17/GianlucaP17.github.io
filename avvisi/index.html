@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#F4F1EA">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="QG Avvisi">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icona-180.png">
+<link rel="icon" href="icona-192.png">
+<title>QG Avvisi</title>
+<!--
+  «QG Avvisi» – l'app (pagina sulla schermata Home) che riceve sull'iPhone le notifiche del QG di Giangi.
+  Il QG (su claude.ai) non può mandare notifiche da solo: lascia i promemoria al "postino" su Supabase,
+  che all'ora giusta li manda a questo telefono. Qui si attivano le notifiche e si prende il codice
+  da scrivere nel QG (solo il QG può collegare un telefono). Sorgente: repository qg-giangi, cartella avvisi/app.
+-->
+<style>
+:root{color-scheme:light;--ink:#1F2433;--mut:#6B7180;--bg:#F4F1EA;--line:#E2DCCF;--ok:#2F8A4C;--bad:#C8363C}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;padding:calc(18px + env(safe-area-inset-top,0px)) 16px calc(40px + env(safe-area-inset-bottom,0px))}
+main{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.top{display:flex;align-items:center;gap:12px}
+.top img{width:46px;height:46px;border-radius:12px}
+h1{font-size:26px;line-height:1.1;margin:0}
+p{margin:0}
+.mut{color:var(--mut);font-size:15px}
+.box{background:#fff;border:2px solid var(--line);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.b{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:58px;border-radius:16px;border:2px solid var(--line);background:#fff;font:inherit;font-weight:700;cursor:pointer;color:inherit;text-decoration:none;text-align:center;padding:0 14px}
+.b.pri{background:var(--ink);color:#fff;border-color:var(--ink)}
+.b:disabled{opacity:.5}
+ol{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:8px}
+.codice{font:800 64px/1 ui-rounded,-apple-system,system-ui,sans-serif;letter-spacing:.14em;text-align:center;padding:10px 0 4px;font-variant-numeric:tabular-nums}
+.ok{color:var(--ok);font-weight:700}
+.stato{font-weight:700;font-size:19px}
+#msg{background:#FFF3C4;border-radius:14px;padding:10px 12px;font-size:15px}
+#msg:empty{display:none}
+.ver{color:var(--mut);font-size:13px;text-align:center;margin-top:6px}
+.cond{display:inline-block;vertical-align:-3px;width:20px;height:20px}
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><img src="icona-180.png" alt=""><div><h1>QG Avvisi</h1><p class="mut">Le notifiche del tuo QG sul telefono</p></div></div>
+  <section class="box" id="vista"><p class="mut">Un attimo…</p></section>
+  <p id="msg" role="status"></p>
+  <p class="ver">QG Avvisi · versione 1</p>
+</main>
+<script>
+(function () {
+  'use strict';
+  var SUPA = 'https://vwceyohkesxvgpbpxwvd.supabase.co/rest/v1/rpc/';
+  var CHIAVE = 'sb_publishable_iKCq2E9g1f3Qj_OxrFwOZA_jKxrZHeE';   // pubblica: da fuori si possono usare solo qg_iscrivi, qg_stato, qg_prova
+  var VAPID = 'BM0IxerhGkKkTjGCcd2O45en_WCiW_UEtn5FxbScLxc4Pm0xoDtdYmwUUZ0PwWtDvibx9KYJFxT27OcnHuK02ss';
+  var QG = 'https://claude.ai/artifact/QrgELEbMwX2RK5iK35pZtM';
+  var vista = document.getElementById('vista'), msg = document.getElementById('msg');
+  var ua = navigator.userAgent;
+  var iPhone = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var dallaHome = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  var supportate = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext;
+  var reg = null, isc = null, attesa = 0;
+  var CONDIVIDI = '<svg class="cond" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg>';
+
+  function dimmi(t) { msg.textContent = t || ''; }
+  function rpc(nome, dati) {
+    return fetch(SUPA + nome, { method: 'POST', headers: { apikey: CHIAVE, 'Content-Type': 'application/json' }, body: JSON.stringify(dati) })
+      .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error((d && d.message) || ('errore ' + r.status)); return d; }); });
+  }
+  function byte(b64) {
+    var s = (b64 + '='.repeat((4 - b64.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/');
+    return Uint8Array.from(atob(s), function (c) { return c.charCodeAt(0); });
+  }
+  function nomeTelefono() { return /iPad/.test(ua) ? 'iPad' : /iPhone/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android' : /Mac/.test(ua) ? 'Mac' : 'computer'; }
+  function mostra(html) { vista.innerHTML = html; }
+
+  function vistaHome() {
+    mostra('<p class="stato">Prima aggiungimi alla schermata Home</p>' +
+      '<p>Sull’iPhone le notifiche arrivano solo dalle app sulla schermata Home. È un minuto:</p>' +
+      '<ol><li>Tocca ' + CONDIVIDI + ' <b>Condividi</b> (in basso in Safari).</li><li>Scegli <b>Aggiungi alla schermata Home</b>, poi <b>Aggiungi</b>.</li><li>Apri <b>QG Avvisi</b> dalla schermata Home e tocca <b>Attiva le notifiche</b>.</li></ol>' +
+      '<p class="mut">Serve iOS 16.4 o più recente.</p>');
+  }
+  function vistaAttiva() {
+    mostra('<p class="stato">Notifiche non ancora attive</p><p>Tocca qui sotto e poi <b>Consenti</b>: ti avviso per promemoria, appuntamenti e scadenze del QG.</p>' +
+      '<button class="b pri" id="attiva" type="button">🔔 Attiva le notifiche</button>');
+    document.getElementById('attiva').addEventListener('click', attiva);
+  }
+  function vistaCodice(c) {
+    mostra('<p class="stato">Ultimo passo: collega questo telefono al QG</p>' +
+      '<p>Nel QG, in <b>Oggi › Agenda › Notifiche</b>, scrivi questo codice e tocca <b>Collega</b>:</p>' +
+      '<div class="codice" aria-label="Codice ' + c.split('').join(' ') + '">' + c + '</div>' +
+      '<a class="b pri" id="apri" href="' + QG + '#avvisi-' + c + '" target="_blank" rel="noopener">Apri il QG con il codice già scritto</a>' +
+      '<p class="mut">Il codice vale 30 minuti. Quando il QG lo conferma, qui compare la spunta verde e ti arriva una notifica di benvenuto.</p>');
+    clearInterval(attesa);
+    attesa = setInterval(controlla, 3000);
+  }
+  function vistaAttivo() {
+    clearInterval(attesa);
+    mostra('<p class="stato ok">✓ Notifiche attive su questo ' + nomeTelefono() + '</p>' +
+      '<p>Non devi tenere aperto niente: le notifiche arrivano da sole. Toccandone una si apre il QG.</p>' +
+      '<button class="b" id="prova" type="button">Manda una prova</button>' +
+      '<a class="b pri" href="' + QG + '" target="_blank" rel="noopener">Apri il QG</a>' +
+      '<p class="mut">Per spegnerle: Impostazioni › Notifiche › QG Avvisi.</p>');
+    document.getElementById('prova').addEventListener('click', function () {
+      if (!isc) return;
+      rpc('qg_prova', { ep: isc.endpoint }).then(function (r) {
+        dimmi(r === 'ok' ? 'Prova in arrivo: entro un minuto ti arriva una notifica.' : r === 'presto' ? 'Ne ho appena mandata una: aspetta un minuto.' : 'Il telefono non risulta collegato: riapri l’app.');
+      }, function (e) { dimmi('Non ci riesco adesso (' + e.message + '). Controlla la connessione.'); });
+    });
+  }
+  function vistaBloccate() {
+    mostra('<p class="stato">Le notifiche sono bloccate</p><p>Apri <b>Impostazioni › Notifiche › QG Avvisi</b> e accendi <b>Consenti notifiche</b>, poi riapri questa app.</p>');
+  }
+
+  function iscrivi() {
+    return rpc('qg_iscrivi', { isc: isc.toJSON(), nome: nomeTelefono() }).then(function (r) {
+      if (r.stato === 'attivo') vistaAttivo(); else vistaCodice(r.codice);
+    });
+  }
+  function controlla() {
+    if (!isc || document.hidden) return;
+    rpc('qg_stato', { ep: isc.endpoint }).then(function (s) {
+      if (s === 'attivo') { vistaAttivo(); dimmi(''); }
+      else if (s === 'no') { clearInterval(attesa); iscrivi(); }
+    }, function () { });
+  }
+  function attiva() {
+    dimmi('');
+    var b = document.getElementById('attiva'); if (b) b.disabled = true;
+    Notification.requestPermission().then(function (p) {
+      if (p !== 'granted') { if (p === 'denied') vistaBloccate(); else { dimmi('Non hai dato il permesso: tocca di nuovo e scegli «Consenti».'); if (b) b.disabled = false; } return; }
+      return navigator.serviceWorker.ready.then(function (r) {
+        return r.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: byte(VAPID) });
+      }).then(function (s) { isc = s; return iscrivi(); });
+    }).catch(function (e) { dimmi('Non sono riuscito ad attivarle: ' + (e && e.message || e)); if (b) b.disabled = false; });
+  }
+
+  function parti() {
+    if (!supportate) {
+      if (iPhone && !dallaHome) vistaHome();
+      else mostra('<p class="stato">Questo browser non riceve notifiche</p><p>Apri questa pagina con Safari sull’iPhone e aggiungila alla schermata Home.</p>');
+      return;
+    }
+    navigator.serviceWorker.register('sw.js').then(function (r) {
+      reg = r;
+      return navigator.serviceWorker.ready;
+    }).then(function (r) { return r.pushManager.getSubscription(); }).then(function (s) {
+      isc = s;
+      if (Notification.permission === 'denied') return vistaBloccate();
+      if (!isc) return iPhone && !dallaHome ? vistaHome() : vistaAttiva();
+      return rpc('qg_stato', { ep: isc.endpoint }).then(function (st) {
+        if (st === 'attivo') vistaAttivo(); else return iscrivi();
+      });
+    }).catch(function (e) { mostra('<p class="stato">Qualcosa non va</p><p class="mut">' + String(e && e.message || e).replace(/</g, '&lt;') + '</p>'); });
+  }
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && attesa) controlla(); });
+  parti();
+})();
+</script>
+</body>
+</html>
