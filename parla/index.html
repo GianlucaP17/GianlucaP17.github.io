@@ -44,6 +44,7 @@ textarea:focus{outline:none;border-color:var(--ink)}
 #msg{background:#FFF3C4;border-radius:14px;padding:10px 12px;font-size:15px}
 #msg:empty{display:none}
 #diag{font-size:12px;color:#9AA0AA;text-align:center;min-height:1em}
+.ver{font-size:13px;color:#9AA0AA;text-align:center}
 </style>
 </head>
 <body>
@@ -57,6 +58,7 @@ textarea:focus{outline:none;border-color:var(--ink)}
   <div class="row"><button class="b pri" id="manda" type="button">Manda al QG</button><button class="b" id="annulla" type="button">Annulla</button></div>
   <p class="mut">Tocca il cerchio: quando pulsa e dice «Ti ascolto», parla. Il testo compare qui mentre parli. «Manda al QG» lo porta nel riquadro del QG.</p>
   <p id="diag" aria-hidden="true"></p>
+  <p class="ver">Parla · versione 5</p>
 </main>
 <script>
 (function () {
@@ -92,7 +94,7 @@ textarea:focus{outline:none;border-color:var(--ink)}
   function aggiungi(x) { x = String(x || '').trim(); if (!x) return; t.value = t.value.trim() ? t.value.replace(/\s*$/, ' ') + x : x.charAt(0).toUpperCase() + x.slice(1); }
   function nuovaSessione() {
     var r = new R(); r.lang = 'it-IT'; r.interimResults = true; r.maxAlternatives = 1;
-    r.continuous = !IOS;   // su iPhone ascolto a frasi e riparto da solo dopo ogni pausa
+    r.continuous = true;   // ascolto continuo: non si ferma alle pause (a frasi sull'iPhone la ripartenza non sentiva più la voce)
     r.onstart = function () { sessioni++; nota('inizio'); micOn(true); stato('Ti ascolto… parla ora'); msg.textContent = ''; };
     r.onaudiostart = function () { nota('audio'); };
     r.onsoundstart = function () { nota('suono'); };
@@ -116,13 +118,21 @@ textarea:focus{outline:none;border-color:var(--ink)}
     r.onend = function () {
       nota('fine');
       if (parz.textContent) { aggiungi(parz.textContent); parz.textContent = ''; }
-      if (vuole) {   // riparto (su iPhone dopo ogni frase)
-        try { rec = nuovaSessione(); rec.start(); return; } catch (x) { nota('ripartenza no'); vuole = false; msg.textContent = 'Tocca di nuovo il cerchio per continuare.'; }
+      if (vuole) {   // il telefono ha chiuso l'ascolto da solo: riparto dopo un attimo
+        setTimeout(function () {
+          if (!vuole) { chiudiAscolto(); return; }
+          try { rec = nuovaSessione(); rec.start(); nota('riparto'); }
+          catch (x) { nota('ripartenza no'); vuole = false; msg.textContent = 'Tocca di nuovo il cerchio per continuare.'; chiudiAscolto(); }
+        }, 300);
+        return;
       }
-      micOn(false); stato(t.value.trim() ? 'Fatto: controlla e tocca «Manda al QG»' : 'Tocca il cerchio e parla');
-      if (dopoFine) { var f = dopoFine; dopoFine = null; f(); }
+      chiudiAscolto();
     };
     return r;
+  }
+  function chiudiAscolto() {
+    micOn(false); stato(t.value.trim() ? 'Fatto: controlla e tocca «Manda al QG»' : 'Tocca il cerchio e parla');
+    if (dopoFine) { var f = dopoFine; dopoFine = null; f(); }
   }
   function ferma(poi) {   // fermo con calma, così arrivano le ultime parole
     if (!rec || !vuole) { if (poi) poi(); return; }
@@ -168,7 +178,7 @@ textarea:focus{outline:none;border-color:var(--ink)}
   function mandaNota(perche) {   // nota tecnica per Claude: nessuna parola, solo come è andato l'ascolto
     if (notaMandata) return; notaMandata = true;
     var ua = navigator.userAgent.replace(/[^A-Za-z0-9 ._\/()-]/g, '').slice(0, 140);
-    imbuca('diag.' + perche + ' | ios ' + IOS + ' | api ' + (!!R) + ' | sessioni ' + sessioni + ' | risultati ' + risultati + ' | ' + EV.join(',') + ' | ' + ua);
+    imbuca('diag.' + perche + ' | v5 | ios ' + IOS + ' | api ' + (!!R) + ' | sessioni ' + sessioni + ' | risultati ' + risultati + ' | ' + EV.join(',') + ' | ' + ua);
   }
   g('manda').addEventListener('click', function () {
     if (inviato) return;
