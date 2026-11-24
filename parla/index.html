@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="apple-mobile-web-app-title" content="Parla">
+<meta name="theme-color" content="#F4F1EA">
+<title>Parla</title>
+<!--
+  «Parla» – la paginetta che ascolta per il QG di Giangi.
+  Perché esiste: sull'iPhone Claude non dà il microfono alle sue pagine; qui (un indirizzo web normale) sì.
+  Come funziona: il telefono trascrive la voce (riconoscimento vocale di Safari, italiano). Con «Manda al QG» il testo
+  viene cifrato con la chiave PUBBLICA qui sotto (RSA-OAEP + AES-GCM) e lasciato in una cassetta (un Modulo Google).
+  Solo il QG ha la chiave privata, nel suo database privato su Claude: legge la cassetta, decifra e cancella.
+  In questa pagina non ci sono dati personali né segreti.
+-->
+<style>
+:root{color-scheme:light;--ink:#1F2433;--mut:#6B7180;--bg:#F4F1EA;--line:#E2DCCF;--acc:#E4572E}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;padding:calc(16px + env(safe-area-inset-top,0px)) 16px calc(60px + env(safe-area-inset-bottom,0px))}
+main{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.top{display:flex;align-items:center;gap:10px}
+.logo{width:38px;height:38px;border-radius:11px;background:var(--ink);color:#fff;display:grid;place-items:center;font-weight:800;font-size:15px}
+h1{font-size:25px;margin:0;letter-spacing:-.01em}
+p{margin:0}
+.mut{color:var(--mut);font-size:15px}
+.mic{align-self:center;width:136px;height:136px;border-radius:50%;border:0;background:var(--acc);color:#fff;display:grid;place-items:center;box-shadow:0 8px 22px rgba(228,87,46,.35);cursor:pointer;margin:6px 0 0;-webkit-tap-highlight-color:transparent}
+.mic svg{width:56px;height:56px}
+.mic:disabled{opacity:.35}
+.mic.on{background:#B93A17;animation:pu 1.4s ease-in-out infinite}
+@keyframes pu{0%,100%{box-shadow:0 0 0 0 rgba(228,87,46,.5)}50%{box-shadow:0 0 0 24px rgba(228,87,46,0)}}
+@media (prefers-reduced-motion:reduce){.mic.on{animation:none}}
+#stato{text-align:center;font-weight:700;min-height:1.4em}
+textarea{width:100%;min-height:150px;border:2px solid var(--line);border-radius:16px;padding:12px 14px;font:inherit;background:#fff;resize:vertical;color:inherit}
+textarea:focus{outline:none;border-color:var(--ink)}
+#parz{color:var(--mut);font-style:italic;min-height:1.3em}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.b{flex:1 1 auto;min-height:54px;border-radius:999px;border:2px solid var(--line);background:#fff;font:inherit;font-weight:700;cursor:pointer;color:inherit;padding:0 18px}
+.b.pri{background:var(--ink);color:#fff;border-color:var(--ink);flex:2 1 auto}
+.b:disabled{opacity:.5}
+#msg{background:#FFF3C4;border-radius:14px;padding:10px 12px;font-size:15px}
+#msg:empty{display:none}
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><span class="logo" aria-hidden="true">QG</span><h1>Parla al QG</h1></div>
+  <button class="mic" id="mic" type="button" aria-label="Parla"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+  <p id="stato" aria-live="polite">Un attimo…</p>
+  <textarea id="t" aria-label="Quello che hai detto" placeholder="Qui compare quello che dici. Puoi anche correggere a mano."></textarea>
+  <p id="parz"></p>
+  <p id="msg" role="status"></p>
+  <div class="row"><button class="b pri" id="manda" type="button">Manda al QG</button><button class="b" id="annulla" type="button">Annulla</button></div>
+  <p class="mut">Parli e il testo compare qui. «Manda al QG» lo porta nel riquadro del QG, poi questa pagina si chiude.</p>
+</main>
+<script>
+(function () {
+  'use strict';
+  // chiave PUBBLICA del QG (serve solo a chiudere il lucchetto; per aprirlo serve la privata, che ha solo il QG)
+  var PUB = {"kty":"RSA","n":"sJsT7U8EkUdfSt9V46armhz98H8RdYftxKE6mVKbL_p0PzS2cY_HWTIA3BPkgAw6zVYxvC0fYl6sDzBnsACAeNFXO6Pn-53wOSJO_cFn-KVz_X4s9KgoOKr0iENOqsK9f_NAoPHofUnukUEY-bBuPIeymAPmbFs8zgE3Nv287guWyD1Wohwqcqds2lDrIELncVUkcTElsitEND8QJFa-GGDcmwBuGKq2XPnGyeChZ4GbMJb6APRzCxhrSQPEyIYiEHxt3wMI2J5Px0AyxqvTLRkfDfHAYCnErqU8Si-3xyyRGIdU0hgS0jEGbZsgng-RPpLz3tq_aHqf-0foV6iglw","e":"AQAB","alg":"RSA-OAEP-256","ext":true,"key_ops":["encrypt"]};
+  // la cassetta: un Modulo Google che riceve solo testo cifrato
+  var CASSETTA = 'https://docs.google.com/forms/d/e/1FAIpQLSfciF9QJYO30oIhjNJ-Y02Q__aOLVJKXPZImS0dG1NP06tv2Q/formResponse';
+  var CAMPO = 'entry.403473777';
+
+  var g = function (id) { return document.getElementById(id); };
+  var t = g('t'), mic = g('mic'), st = g('stato'), parz = g('parz'), msg = g('msg');
+
+  // cosa mi passa il QG dopo il #: gettone (t), riquadro (f), sezione (v), indirizzo del QG (a)
+  var q = {};
+  location.hash.slice(1).split('&').forEach(function (p) { var i = p.indexOf('='); if (i > 0) { try { q[p.slice(0, i)] = decodeURIComponent(p.slice(i + 1)); } catch (e) { } } });
+  function nuovoGettone() { var u = crypto.getRandomValues(new Uint8Array(9)), s = ''; for (var i = 0; i < u.length; i++) s += (u[i] % 36).toString(36); return s + Date.now().toString(36).slice(-3); }
+  var TOK = /^[a-z0-9]{8,20}$/.test(q.t || '') ? q.t : nuovoGettone();
+  var F = /^[A-Za-z][A-Za-z0-9_-]{0,30}$/.test(q.f || '') ? q.f : 'dimmi';
+  var V = /^[a-z][a-z-]{0,30}$/.test(q.v || '') ? q.v : 'oggi';
+  var A = /^[A-Za-z0-9]{6,40}$/.test(q.a || '') ? q.a : '';
+  try { if (A) localStorage.setItem('qg-parla-a', A); else A = localStorage.getItem('qg-parla-a') || ''; } catch (e) { }
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { }
+
+  // ---------- ascolto (riconoscimento vocale del telefono)
+  var R = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var rec = null, vuole = false, provaSola = false;
+  function stato(x) { st.textContent = x; }
+  function micOn(on) { mic.className = on ? 'mic on' : 'mic'; mic.setAttribute('aria-label', on ? 'Basta, ho finito' : 'Parla'); }
+  function aggiungi(x) { x = String(x || '').trim(); if (!x) return; t.value = t.value.trim() ? t.value.replace(/\s*$/, ' ') + x : x.charAt(0).toUpperCase() + x.slice(1); }
+  function avvia(automatico) {
+    if (!R) return;
+    provaSola = !!automatico;
+    rec = new R(); rec.lang = 'it-IT'; rec.continuous = true; rec.interimResults = true;
+    rec.onstart = function () { micOn(true); stato('Ti ascolto… tocca il cerchio quando hai finito'); msg.textContent = ''; };
+    rec.onresult = function (e) { var p = ''; for (var i = e.resultIndex; i < e.results.length; i++) { var r = e.results[i]; if (r.isFinal) aggiungi(r[0].transcript); else p += r[0].transcript; } parz.textContent = p; };
+    rec.onerror = function (e) {
+      var c = e && e.error; if (c === 'no-speech' || c === 'aborted') return;
+      vuole = false;
+      if (provaSola && (c === 'not-allowed' || c === 'service-not-allowed')) { micOn(false); stato('Tocca il cerchio e parla'); return; }
+      msg.textContent = c === 'not-allowed' || c === 'service-not-allowed'
+        ? 'Il microfono non è permesso. Su iPhone: Impostazioni › App › Safari › Microfono › Consenti (e «Dettatura» attiva in Impostazioni › Generali › Tastiera).'
+        : c === 'network' ? 'Per capire la voce serve internet: controlla la connessione.' : 'Il microfono si è fermato. Tocca di nuovo il cerchio.';
+    };
+    rec.onend = function () {
+      if (parz.textContent) { aggiungi(parz.textContent); parz.textContent = ''; }
+      if (vuole) { try { rec.start(); return; } catch (x) { } }
+      vuole = false; micOn(false); stato(t.value.trim() ? 'Fatto: controlla e tocca «Manda al QG»' : 'Tocca il cerchio e parla');
+    };
+    vuole = true;
+    try { rec.start(); } catch (x) { vuole = false; micOn(false); if (!automatico) msg.textContent = 'Il microfono non parte: riprova.'; }
+  }
+  if (!R) { mic.disabled = true; stato('Qui il riconoscimento vocale non c’è'); msg.textContent = 'Apri questa pagina con Safari sull’iPhone. Intanto puoi scrivere qui sotto e mandarlo al QG.'; }
+  else stato('Tocca il cerchio e parla');
+  mic.addEventListener('click', function () {
+    if (!R) return;
+    if (vuole) { vuole = false; stato('Un attimo…'); try { rec.stop(); } catch (x) { } return; }
+    avvia(false);
+  });
+  var tel = false; try { tel = matchMedia('(pointer: coarse)').matches; } catch (e) { }
+  if (R && tel) { try { avvia(true); } catch (e) { } }   // sul telefono provo a partire da solo
+
+  // ---------- lucchetto: AES-GCM per il testo, la sua chiave chiusa con la chiave pubblica del QG
+  function b64u(u) { u = new Uint8Array(u); var s = ''; for (var i = 0; i < u.length; i++) s += String.fromCharCode(u[i]); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+  function chiudi(oggetto) {
+    var dati = new TextEncoder().encode(JSON.stringify(oggetto)), iv = crypto.getRandomValues(new Uint8Array(12)), aes, ct;
+    return crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt'])
+      .then(function (k) { aes = k; return crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, aes, dati); })
+      .then(function (c) { ct = c; return crypto.subtle.exportKey('raw', aes); })
+      .then(function (raw) { return crypto.subtle.importKey('jwk', PUB, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['encrypt']).then(function (pub) { return crypto.subtle.encrypt({ name: 'RSA-OAEP' }, pub, raw); }); })
+      .then(function (ek) { return TOK + '.' + b64u(ek) + '.' + b64u(iv) + '.' + b64u(ct); });
+  }
+  function imbuca(valore) {
+    var corpo = new URLSearchParams(); corpo.append(CAMPO, valore);
+    var ok = false;
+    try { ok = !!(navigator.sendBeacon && navigator.sendBeacon(CASSETTA, corpo)); } catch (e) { }
+    if (!ok) { try { fetch(CASSETTA, { method: 'POST', mode: 'no-cors', keepalive: true, body: corpo }); ok = true; } catch (e) { } }
+    return ok;
+  }
+  function torna() {
+    // la pagina si chiude e si torna al QG; se il telefono non la lascia chiudere, riapro il QG qui
+    setTimeout(function () { try { window.close(); } catch (e) { } }, 600);
+    setTimeout(function () {
+      if (A) location.href = 'https://claude.ai/artifact/' + A + '#qgp-' + TOK;
+      else { stato('Fatto ✓'); msg.textContent = 'Ora torna alla scheda del QG: trovi il testo nel riquadro.'; }
+    }, 1600);
+  }
+  var inviato = false;
+  g('manda').addEventListener('click', function () {
+    if (inviato) return;
+    var x = (t.value + ' ' + parz.textContent).trim();
+    if (!x) { msg.textContent = 'Non c’è ancora niente: tocca il cerchio e parla.'; return; }
+    vuole = false; try { if (rec) rec.abort(); } catch (e) { }
+    inviato = true; g('manda').disabled = true; stato('Mando al QG…');
+    chiudi({ t: TOK, x: x, f: F, v: V, n: Date.now() }).then(function (valore) {
+      if (!imbuca(valore)) throw new Error('invio');
+      try { localStorage.setItem('qg-parla-ultimo', valore); } catch (e) { }
+      stato('Mandato ✓ Torno al QG…'); torna();
+    }).catch(function () { inviato = false; g('manda').disabled = false; stato(''); msg.textContent = 'Non riesco a mandarlo: controlla la connessione e riprova.'; });
+  });
+  g('annulla').addEventListener('click', function () {
+    vuole = false; try { if (rec) rec.abort(); } catch (e) { }
+    // avviso il QG che non arriva niente, così non resta ad aspettare
+    chiudi({ t: TOK, annulla: true, n: Date.now() }).then(imbuca).catch(function () { });
+    stato('Annullato'); torna();
+  });
+})();
+</script>
+</body>
+</html>
